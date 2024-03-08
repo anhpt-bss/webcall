@@ -1,70 +1,3 @@
-// import { useEffect, useRef, useState } from 'react'
-// import Peer from 'peerjs'
-
-// function Webcall() {
-//     const [peerId, setPeerId] = useState('')
-//     const [remotePeerIdValue, setRemotePeerIdValue] = useState('')
-//     const remoteVideoRef = useRef(null)
-//     const currentUserVideoRef = useRef(null)
-//     const peerInstance = useRef(null)
-
-//     useEffect(() => {
-//         const peer = new Peer()
-
-//         peer.on('open', (id) => {
-//             setPeerId(id)
-//         })
-
-//         peer.on('call', (call) => {
-//             var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia
-
-//             getUserMedia({ video: true, audio: true }, (mediaStream) => {
-//                 currentUserVideoRef.current.srcObject = mediaStream
-//                 currentUserVideoRef.current.play()
-//                 call.answer(mediaStream)
-//                 call.on('stream', function (remoteStream) {
-//                     remoteVideoRef.current.srcObject = remoteStream
-//                     remoteVideoRef.current.play()
-//                 })
-//             })
-//         })
-
-//         peerInstance.current = peer
-//     }, [])
-
-//     const call = (remotePeerId) => {
-//         var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia
-
-//         getUserMedia({ video: true, audio: true }, (mediaStream) => {
-//             currentUserVideoRef.current.srcObject = mediaStream
-//             currentUserVideoRef.current.play()
-
-//             const call = peerInstance.current.call(remotePeerId, mediaStream)
-
-//             call.on('stream', (remoteStream) => {
-//                 remoteVideoRef.current.srcObject = remoteStream
-//                 remoteVideoRef.current.play()
-//             })
-//         })
-//     }
-
-//     return (
-//         <div className="App">
-//             <h1>Current user id is {peerId}</h1>
-//             <input type="text" value={remotePeerIdValue} onChange={(e) => setRemotePeerIdValue(e.target.value)} />
-//             <button onClick={() => call(remotePeerIdValue)}>Call</button>
-//             <div>
-//                 <video ref={currentUserVideoRef} />
-//             </div>
-//             <div>
-//                 <video ref={remoteVideoRef} />
-//             </div>
-//         </div>
-//     )
-// }
-
-// export default Webcall
-
 import { useEffect, useRef, useState } from 'react'
 import Peer from 'peerjs' // version 1.3.2
 
@@ -101,20 +34,33 @@ function Webcall() {
 
         // Handle 'call' event when receiving a call
         peer.on('call', (call) => {
-            console.log('on call')
-            var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia
+            console.log('on call', call)
+            var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
 
             getUserMedia(
-                { video: true, audio: true },
+                { video: call?.metadata?.video, audio: true }, // Determine whether it's an audio or video call
                 (mediaStream) => {
                     // Display the local media stream
                     currentUserVideoRef.current.srcObject = mediaStream
-                    currentUserVideoRef.current.play()
+                    currentUserVideoRef?.current?.play()
                     // Answer the call and display the remote stream
-                    call.answer(mediaStream)
+                    call?.answer(mediaStream)
                     call.on('stream', function (remoteStream) {
-                        remoteVideoRef.current.srcObject = remoteStream
-                        remoteVideoRef.current.play()
+                        console.log(
+                            'remoteStream',
+                            remoteStream,
+                            remoteVideoRef.current,
+                            remoteVideoRef.current.srcObject
+                        )
+                        if (!remoteVideoRef.current.srcObject) {
+                            remoteVideoRef.current.srcObject = remoteStream
+                            remoteVideoRef?.current?.play()
+                        }
+                    })
+                    // Handle call termination by either party
+                    call.on('close', () => {
+                        console.log('Call closed')
+                        hangUp() // Terminate call on callee's side as well
                     })
                     // Store the local media stream
                     localStream.current = mediaStream
@@ -127,28 +73,37 @@ function Webcall() {
             currentCall.current = call
         })
 
+        // Handle 'close' event when the connection to PeerServer is closed
+        peer.on('close', () => {
+            console.log('Connection to PeerServer closed')
+            // Perform cleanup or additional logic for hang-up or disconnect here
+            hangUp()
+        })
+
         // Store the Peer instance
         peerInstance.current = peer
     }, [])
 
     // Function to initiate an audio call
     const audioCall = (remotePeerId) => {
-        var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia
+        var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
 
         getUserMedia(
             { video: false, audio: true },
             (mediaStream) => {
                 // Display the local media stream
                 currentUserVideoRef.current.srcObject = mediaStream
-                currentUserVideoRef.current.play()
+                currentUserVideoRef?.current?.play()
 
                 // Initiate the call and display the remote stream
-                const call = peerInstance.current.call(remotePeerId, mediaStream)
+                const call = peerInstance?.current?.call(remotePeerId, mediaStream, { metadata: { video: false } })
 
                 call.on('stream', (remoteStream) => {
                     console.log('remoteStream', remoteStream)
-                    remoteVideoRef.current.srcObject = remoteStream
-                    remoteVideoRef.current.play()
+                    if (!remoteVideoRef.current.srcObject) {
+                        remoteVideoRef.current.srcObject = remoteStream
+                        remoteVideoRef?.current?.play()
+                    }
                 })
                 // Store the current call
                 currentCall.current = call
@@ -163,22 +118,24 @@ function Webcall() {
 
     // Function to initiate a video call
     const videoCall = (remotePeerId) => {
-        var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia
+        var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
 
         getUserMedia(
             { video: true, audio: true },
             (mediaStream) => {
                 // Display the local media stream
                 currentUserVideoRef.current.srcObject = mediaStream
-                currentUserVideoRef.current.play()
+                currentUserVideoRef?.current?.play()
 
                 // Initiate the call and display the remote stream
-                const call = peerInstance.current.call(remotePeerId, mediaStream)
+                const call = peerInstance?.current?.call(remotePeerId, mediaStream, { metadata: { video: true } })
 
                 call.on('stream', (remoteStream) => {
                     console.log('remoteStream', remoteStream)
-                    remoteVideoRef.current.srcObject = remoteStream
-                    remoteVideoRef.current.play()
+                    if (!remoteVideoRef.current.srcObject) {
+                        remoteVideoRef.current.srcObject = remoteStream
+                        remoteVideoRef?.current?.play()
+                    }
                 })
                 // Store the current call
                 currentCall.current = call
@@ -193,31 +150,32 @@ function Webcall() {
 
     // Function to hang up the call
     const hangUp = () => {
-        if (currentCall.current) {
-            currentCall.current.close()
+        if (currentCall?.current) {
+            // Close the local call
+            currentCall?.current?.close()
             currentUserVideoRef.current.srcObject = null
             remoteVideoRef.current.srcObject = null
             // Stop all tracks in the local media stream
-            localStream.current.getTracks().forEach((track) => track.stop())
+            localStream?.current?.getTracks()?.forEach((track) => track?.stop())
         }
     }
 
     // Function to toggle mute/unmute audio
     const toggleAudio = () => {
-        if (localStream.current) {
-            const audioTracks = localStream.current.getAudioTracks()
-            audioTracks.forEach((track) => {
-                track.enabled = !track.enabled // Toggle the enabled state of the audio track
+        if (localStream?.current) {
+            const audioTracks = localStream?.current?.getAudioTracks()
+            audioTracks?.forEach((track) => {
+                track.enabled = !track?.enabled // Toggle the enabled state of the audio track
             })
         }
     }
 
     // Function to toggle enable/disable video
     const toggleVideo = () => {
-        if (localStream.current) {
-            const videoTracks = localStream.current.getVideoTracks()
-            videoTracks.forEach((track) => {
-                track.enabled = !track.enabled // Toggle the enabled state of the video track
+        if (localStream?.current) {
+            const videoTracks = localStream?.current?.getVideoTracks()
+            videoTracks?.forEach((track) => {
+                track.enabled = !track?.enabled // Toggle the enabled state of the video track
             })
         }
     }
@@ -226,7 +184,7 @@ function Webcall() {
         <div className="App">
             <div>{peerId}</div>
 
-            <input type="text" value={remotePeerIdValue} onChange={(e) => setRemotePeerIdValue(e.target.value)} />
+            <input type="text" value={remotePeerIdValue} onChange={(e) => setRemotePeerIdValue(e?.target?.value)} />
 
             <div>
                 <button onClick={() => audioCall(remotePeerIdValue)}>Audio Call</button>
@@ -237,14 +195,14 @@ function Webcall() {
 
                 <button onClick={toggleVideo}>Toggle Video</button>
 
-                <button onClick={() => hangUp(remotePeerIdValue)}>Hang Up</button>
+                <button onClick={() => hangUp()}>Hang Up</button>
             </div>
 
             <div>
-                <video ref={currentUserVideoRef} style={{ width: '200px' }} />
+                <video ref={currentUserVideoRef} style={{ width: '100px' }} />
             </div>
             <div>
-                <video ref={remoteVideoRef} style={{ width: '200px' }} />
+                <video ref={remoteVideoRef} style={{ width: '100px' }} />
             </div>
         </div>
     )
