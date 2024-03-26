@@ -23,59 +23,101 @@ function Webcall() {
         // Create a new instance of Peer
         const peer = new Peer()
 
-        // Log the Peer instance for debugging purposes
-        console.log('peer', peer)
-
-        // Handle 'open' event when successfully connected to PeerServer
+        /* 
+            Emitted when a connection to the PeerServer is established.
+            You may use the peer before this is emitted, but messages to the server will be queued.
+            id is the brokering ID of the peer (which was either provided in the constructor or assigned by the server).
+        */
         peer.on('open', (id) => {
-            console.log('id', id)
+            console.log('[On open]:', id)
             setPeerId(id)
         })
 
-        // Handle 'call' event when receiving a call
-        peer.on('call', (call) => {
-            console.log('on call', call)
-            var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
+        /* 
+            Emitted when a new data connection is established from a remote peer.
+        */
+        peer.on('connection', (dataConnection) => {
+            console.log('[On connection]:', dataConnection)
+        })
 
+        /* 
+            Emitted when a remote peer attempts to call you.
+            The emitted mediaConnection is not yet active; you must first answer the call (mediaConnection.answer([stream]);).
+            Then, you can listen for the stream event.
+        */
+        peer.on('call', (mediaConnection) => {
+            console.log('[On call]:', mediaConnection)
+
+            let getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
             getUserMedia(
-                { video: call?.metadata?.video, audio: true }, // Determine whether it's an audio or video call
+                { video: mediaConnection?.metadata?.video, audio: true }, // Determine whether it's an audio or video call
                 (mediaStream) => {
                     // Display the local media stream
                     currentUserVideoRef.current.srcObject = mediaStream
                     currentUserVideoRef?.current?.play()
+
                     // Answer the call and display the remote stream
-                    call?.answer(mediaStream)
-                    call.on('stream', function (remoteStream) {
+                    mediaConnection?.answer(mediaStream)
+
+                    mediaConnection.on('stream', function (remoteStream) {
                         console.log(
-                            'remoteStream',
+                            '[Call on stream]:',
                             remoteStream,
                             remoteVideoRef.current,
                             remoteVideoRef.current.srcObject
                         )
-                        if (!remoteVideoRef.current.srcObject) {
-                            remoteVideoRef.current.srcObject = remoteStream
-                            remoteVideoRef?.current?.play()
-                        }
+                       
+                        remoteVideoRef.current.srcObject = remoteStream
+                        remoteVideoRef?.current?.play()
                     })
-                    // Handle call termination by either party
-                    call.on('close', () => {
-                        console.log('Call closed')
+
+                    // Emitted when either you or the remote peer closes the media connection.
+                    mediaConnection.on('close', () => {
+                        console.log('[Call on close]')
                         hangUp() // Terminate call on callee's side as well
                     })
+
+                    // Errors on the media connection
+                    mediaConnection.on('error', (error) => {
+                        console.log('[Call on error]:', error)
+                        hangUp() // Terminate call on callee's side as well
+                    })
+
                     // Store the local media stream
                     localStream.current = mediaStream
                 },
                 (error) => {
-                    console.log('Failed to get local stream', error)
+                    console.log('[Failed to get local stream]: ', error)
                 }
             )
             // Store the current call
-            currentCall.current = call
+            currentCall.current = mediaConnection
         })
 
-        // Handle 'close' event when the connection to PeerServer is closed
+        /* 
+            Emitted when the peer is destroyed and can no longer accept or create any new connections. At this time, the peer's connections will all be closed.
+        */
         peer.on('close', () => {
-            console.log('Connection to PeerServer closed')
+            console.log('[On close]')
+            // Perform cleanup or additional logic for hang-up or disconnect here
+            hangUp()
+        })
+
+        /* 
+            Emitted when the peer is disconnected from the signalling server, either manually or because the connection to the signalling server was lost.
+            When a peer is disconnected, its existing connections will stay alive, but the peer cannot accept or create any new connections.
+            You can reconnect to the server by calling peer.reconnect().
+        */
+        peer.on('disconnected', () => {
+            console.log('[On disconnected]: Reconnecting...')
+            peer.reconnect()
+        })
+
+        /* 
+            Errors on the peer are almost always fatal and will destroy the peer. Errors from the underlying socket and PeerConnections are forwarded here.
+        */
+        peer.on('error', (error) => {
+            console.log('[On error]:', error)
             // Perform cleanup or additional logic for hang-up or disconnect here
             hangUp()
         })
@@ -86,7 +128,7 @@ function Webcall() {
 
     // Function to initiate an audio call
     const audioCall = (remotePeerId) => {
-        var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
+        let getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
 
         getUserMedia(
             { video: false, audio: true },
@@ -97,28 +139,29 @@ function Webcall() {
 
                 // Initiate the call and display the remote stream
                 const call = peerInstance?.current?.call(remotePeerId, mediaStream, { metadata: { video: false } })
-
                 call.on('stream', (remoteStream) => {
                     console.log('remoteStream', remoteStream)
-                    if (!remoteVideoRef.current.srcObject) {
-                        remoteVideoRef.current.srcObject = remoteStream
-                        remoteVideoRef?.current?.play()
-                    }
+                    
+                    remoteVideoRef.current.srcObject = remoteStream
+                    remoteVideoRef?.current?.play()
+                    
                 })
+
                 // Store the current call
                 currentCall.current = call
+
                 // Store the local media stream
                 localStream.current = mediaStream
             },
             (error) => {
-                console.log('Failed to get local stream', error)
+                console.log('[Failed to get local stream]: ', error)
             }
         )
     }
 
     // Function to initiate a video call
     const videoCall = (remotePeerId) => {
-        var getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
+        let getUserMedia = navigator?.getUserMedia || navigator?.webkitGetUserMedia || navigator?.mozGetUserMedia
 
         getUserMedia(
             { video: true, audio: true },
@@ -129,34 +172,52 @@ function Webcall() {
 
                 // Initiate the call and display the remote stream
                 const call = peerInstance?.current?.call(remotePeerId, mediaStream, { metadata: { video: true } })
-
                 call.on('stream', (remoteStream) => {
                     console.log('remoteStream', remoteStream)
-                    if (!remoteVideoRef.current.srcObject) {
-                        remoteVideoRef.current.srcObject = remoteStream
-                        remoteVideoRef?.current?.play()
-                    }
+                    
+                    remoteVideoRef.current.srcObject = remoteStream
+                    remoteVideoRef?.current?.play()
+                    
                 })
+
                 // Store the current call
                 currentCall.current = call
+
                 // Store the local media stream
                 localStream.current = mediaStream
             },
             (error) => {
-                console.log('Failed to get local stream', error)
+                console.log('[Failed to get local stream]: ', error)
             }
         )
     }
 
     // Function to hang up the call
     const hangUp = () => {
-        if (currentCall?.current) {
-            // Close the local call
-            currentCall?.current?.close()
-            currentUserVideoRef.current.srcObject = null
-            remoteVideoRef.current.srcObject = null
-            // Stop all tracks in the local media stream
+        // Turn of video
+        if (currentUserVideoRef?.current) currentUserVideoRef.current.srcObject = null
+        if (remoteVideoRef?.current) remoteVideoRef.current.srcObject = null
+
+        // Stop all tracks in the local media stream
+        if (localStream?.current) {
             localStream?.current?.getTracks()?.forEach((track) => track?.stop())
+            localStream.current = null
+        }
+
+        if (currentCall?.current) currentCall.current = null
+
+        if (peerInstance?.current) peerInstance.current = null
+
+        // Close the local call
+        if (currentCall?.current) {
+            currentCall?.current?.close()
+        }
+
+        if (peerInstance?.current) {
+            // Close the connection to the server, leaving all existing data and media connections intact. peer.disconnected will be set to true and the disconnected event will fire.
+            peerInstance?.current?.disconnect()
+            // Close the connection to the server and terminate all existing connections. peer.destroyed will be set to true.
+            peerInstance?.current?.destroy()
         }
     }
 
@@ -199,10 +260,10 @@ function Webcall() {
             </div>
 
             <div>
-                <video ref={currentUserVideoRef} style={{ width: '100px' }} />
+                <video ref={currentUserVideoRef} style={{ width: '100px' }} playsInline />
             </div>
             <div>
-                <video ref={remoteVideoRef} style={{ width: '100px' }} />
+                <video ref={remoteVideoRef} style={{ width: '100px' }} playsInline />
             </div>
         </div>
     )
