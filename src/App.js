@@ -109,8 +109,11 @@ function Webcall() {
             You can reconnect to the server by calling peer.reconnect().
         */
         peer.on('disconnected', () => {
-            console.log('[On disconnected]: Reconnecting...')
-            peer.reconnect()
+            console.log('[On disconnected]', peer.destroyed, peer.disconnected)
+            if (!peer.destroyed && peer.disconnected) {
+                console.log('[Reconnecting...]')
+                peer.reconnect()
+            }
         })
 
         /* 
@@ -204,13 +207,11 @@ function Webcall() {
             localStream.current = null
         }
 
-        if (currentCall?.current) currentCall.current = null
-
-        if (peerInstance?.current) peerInstance.current = null
-
-        // Close the local call
         if (currentCall?.current) {
+            // Closes the media connection.
             currentCall?.current?.close()
+            // Delete ref value
+            currentCall.current = null
         }
 
         if (peerInstance?.current) {
@@ -218,6 +219,8 @@ function Webcall() {
             peerInstance?.current?.disconnect()
             // Close the connection to the server and terminate all existing connections. peer.destroyed will be set to true.
             peerInstance?.current?.destroy()
+            // Delete ref value
+            peerInstance.current = null
         }
     }
 
